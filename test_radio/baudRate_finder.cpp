@@ -5,7 +5,7 @@
 CC1101::Radio radio(7, 4, 5, 6);
 
 // Baud rates to sweep through (kBaud)
-const double baudRates[] = { 0.6, 1.0, 1.2, 2.0, 2.4, 3.4, 4.0, 4.8, 8.0, 9.6 };
+const double baudRates[] = { 0.6, 1.0, 1.2, 2.0, 2.4, 3.4, 4.0, 4.8, 8.0, 9.6};
 const int numBaudRates = sizeof(baudRates) / sizeof(baudRates[0]);
 
 // How many 64-byte captures to collect per baud rate before scoring
