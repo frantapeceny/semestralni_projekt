@@ -12,9 +12,15 @@ using namespace std;
 CC1101::Radio radio(7, 4, 5, 6);
 
 const int CAPTURES_PER_RATE = 4;
-const double baudRates[] = { 0.6, 1.0, 1.2, 2.0, 2.4, 3.4, 4.0, 4.8, 8.0, 9.6 };
+const double baudRates[] = { 1.0, 1.2, 2.0, 2.4, 4.0, 4.8, 9.6 }; // vyrazeno: 0.6, 3.4, 8.0
 const int numBaudRates = sizeof(baudRates) / sizeof(baudRates[0]);
-const int DELKA_SNIMANI_RADIO = 3000;
+const int DELKA_SNIMANI_RADIO = 2000;
+
+// buttons + led definitions
+#define button1 21
+#define button2 20
+#define led 10
+int currentSlot = 0; // pri zapnuti bude na obrazovce automaticky slot 0
 
 class radioSignal{
     private:
@@ -24,22 +30,36 @@ class radioSignal{
         vector <uint8_t> getData() const { return data; }
         void setData( vector <uint8_t> givenData) { data = givenData; }
         void setBaudRate(int rate) { baudRate = rate; }
+        int getBaudRate() { return baudRate; }
     protected:
 };
 
-void radioSetup(double baud) {
+class nfcSignal{
+    private:
+        vector <uint8_t> data;
+    public:
+        vector <uint8_t> getData() const { return data; }
+        void setData( vector <uint8_t> givenData) { data = givenData; }
+    protected:
+};
+
+// pole na ulozeni radio a nfc signalu s nalezitostmi
+radioSignal signaly[5];
+nfcSignal nfcs[5];
+
+int radioSetup(double baud, int lenght) {
+
+    if (radio.begin(CC1101::MOD_ASK_OOK, 433.92, baud) != CC1101::STATUS_OK) { // baud rate je tu jedno
+        Serial.println("CC1101 init failed!");
+        delay(200);
+        return -1;
+    }
+
     radio.setSyncMode(CC1101::SYNC_MODE_NO_PREAMBLE);  // ctu vsechno, co jde okolo - ne jen nejaky uzsi vyber
     radio.setCrc(false);                                // accept packets regardless of CRC
     radio.setAddressFilteringMode(CC1101::ADDR_FILTER_MODE_NONE);
-    radio.setPacketLengthMode(CC1101::PKT_LEN_MODE_FIXED, 64);
-
-    int attempts = 0;
-    while (radio.begin(CC1101::MOD_ASK_OOK, 433.92, baud) != CC1101::STATUS_OK) { // baud rate je tu jedno
-        Serial.println("CC1101 init failed!");
-        attempts ++;
-        if (attempts >= 10) { exit(0); }
-        delay(200);
-    }
+    radio.setPacketLengthMode(CC1101::PKT_LEN_MODE_FIXED, lenght);
+    return 0;
 }
 
 int countDataBytes(uint8_t *buf, size_t len) {
@@ -118,6 +138,30 @@ float scoreCaptures(uint8_t captures[][64], int numCaptures) {
   return score;
 }
 
+vector<uint8_t> extractCycle(vector<uint8_t>& data) {
+    int n = data.size();
+    
+    // zkusime delky od 10 do n/2
+    for (int len = 10; len <= n / 2; len++) {
+        bool match = true;
+        for (int i = 0; i < len; i++) {
+            if (data[i] != data[i + len]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            Serial.printf("nalezen cyklus delky %d\n", len);
+            return vector<uint8_t>(data.begin(), data.begin() + len);
+        }
+    }
+    
+    // nic nenalezeno, vrat prvnich 64 bytu
+    Serial.println("Cyklus nenalezen, pouzivam prvnich 64 bytu");
+    int cutoff = min((int)data.size(), 64);
+    return vector<uint8_t>(data.begin(), data.begin() + cutoff);
+}
+
 double baudRateFinder() {
     float bestScore = -1;
     double bestBaud = 0;
@@ -128,7 +172,9 @@ double baudRateFinder() {
         double baud = baudRates[b];
 
         // reinit radio for this baud rate
-        radioSetup(baud);
+        if (radioSetup(baud, 64) == -1) {
+            return -1;
+        }
         /* if (radio.begin(CC1101::MOD_ASK_OOK, 433.92, baud) != CC1101::STATUS_OK) {
             Serial.printf("[%.1f kBaud] Init failed, skipping\n", baud);
             continue;
@@ -168,9 +214,29 @@ double baudRateFinder() {
     return bestBaud;
 }
 
-void readRadio() {
+void printData(vector <uint8_t> data) {
+    for (int i = 0; i < data.size(); i++){
+        if (data[i] < 0x10){
+        Serial.print("0");
+        }
+        Serial.print(data[i], HEX);
+        Serial.print(" ");
+        if ((i + 1) % 32 == 0) { Serial.println(); }
+    }
+    Serial.println();
+}
+
+int readRadio(int currentSlot) {
+    Serial.println("press and hold the transmitter while is the led on");
+    delay(500);
+    digitalWrite(led, HIGH);
+
     double baudRate = baudRateFinder(); // ted by mohla blikat dioda
-    radioSetup(baudRate);
+    if (baudRate == -1) {
+        return -1;
+    }
+
+    radioSetup(baudRate, 64);
 
     unsigned long start = millis();
     uint8_t zasobnik[64] = {00};
@@ -189,40 +255,39 @@ void readRadio() {
         }
         }
         Serial.print("noch: ");
-        Serial.print(4 - (millis() - start)/1000);
+        Serial.print(DELKA_SNIMANI_RADIO/1000 - (millis() - start)/1000);
         Serial.println(" sekunde(n)");
     }
 
     Serial.println("capturing done");
-
+    
     radioSignal signal;
+    vector<uint8_t> sequence = extractCycle(data);
     signal.setBaudRate(baudRate);
-    signal.setData(data);
+    signal.setData(sequence);  
+    signaly[currentSlot] = signal;
 
-    /*      tisk nahranych hodnot 
-    delay(500);
-
-    for (int i = 0; i < data.size(); i++){
-        if (data[i] < 0x10){
-        Serial.print("0");
-        }
-        Serial.print(data[i], HEX);
-        Serial.print(" ");
-        if ((i + 1) % 32 == 0) { Serial.println(); }
-    }
-
-    while(true){}; */
-
+    digitalWrite(led, LOW);
+    printData(signal.getData());
+    return 0;
 }
 
-void writeRadio(double baud, radioSignal signal) {
-    radioSetup(baud);
+void writeRadio(radioSignal signal) {
+    double baud = signal.getBaudRate();
 
     Serial.println("Sending gate code...");
 
+    int lenght = signal.getData().size();
+    uint8_t arrayToSend[lenght];
+    for (int t = 0; t < lenght; t++) {
+        arrayToSend[t] = signal.getData()[t];
+    }
+
+    radioSetup(baud, lenght);
+
     // vysle sekvenci dvakrat
     for (int i = 0; i < 2; i++) {
-        CC1101::Status s = radio.transmit(signal.getData(), sizeof(signal.getData()));
+        CC1101::Status s = radio.transmit(arrayToSend, lenght);
         if (s != CC1101::STATUS_OK) {
             Serial.print("Transmit failed: ");
             Serial.println(s);
@@ -250,21 +315,38 @@ void setup() {
     Serial.begin(115200);
     Serial.println("warmin' up");
 
-    // pole na ulozeni radio a nfc signalu s nalezitostmi
-    radioSignal signaly[5];
-    // nfcSignal nfcs[5];
-
-    // setup tlacitek - volny jsou jeste GPIO 8 a 2
-    pinMode(21, INPUT); // move up
-    pinMode(1, INPUT); // click ok
-    pinMode(0, INPUT); // move down
+    // setup tlacitek - volny je jeste GPIO 8
+    //pinMode(21, INPUT); // move up
+    pinMode(button2, INPUT_PULLUP); // click ok
+    pinMode(button1, INPUT_PULLUP); // move down - rotary array
+    pinMode(led, OUTPUT);
 
 }
 
 void loop() {
+    Serial.print("button1: ");
+    Serial.print(digitalRead(button1));
+    Serial.print(" button2: ");
+    Serial.print(digitalRead(button2));
+    Serial.print(" delka zachycenych dat: ");
+    Serial.println(signaly[currentSlot].getData().size());
 
     // button inputs binded with its respective actions
+        // jeden button bude pricitat currentSlot, actions, druhy bude confirmovat
+        // tj. prve budes tlacitkem 1 prochazet sloty a tlacitkem 2 zvolis slot, pak se ti objevi obrazovka s moznymi akcemi
+        // tu budes opet prochazet pomoci tlacitka 1 a pomoci tlacitka 2 ji vyberes
+        // kazdy slot by mel mit nejaky svuj medailonek - cislo, radio/nfc, baud rate / nejakou nfc charakterizaci, plny/prazdny
+    if (digitalRead(button1) == LOW){
+        if (readRadio(currentSlot) == -1) { Serial.println("failed to read radio"); }
+    }
 
-
-
+    if (digitalRead(button2) == LOW) {
+        if (signaly[currentSlot].getData().size() == 0) {
+            Serial.println("prazdny slot, neni co vyslat");
+        } else {
+            writeRadio(signaly[currentSlot]);
+        }
+    }
+    
+    delay(10);
 }
