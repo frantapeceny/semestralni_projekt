@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "radio.h"
+#include "utils.h"
 #include "config.h"
 
 using namespace std;
@@ -19,10 +20,6 @@ void setup() {
 
 }
 
-bool is_pressed(int button_pin) {
-    return digitalRead(button_pin) == LOW;
-}
-
 void loop() {
     // debug:
     // Serial.print("button1: ");
@@ -39,12 +36,12 @@ void loop() {
         // kazdy slot by mel mit nejaky svuj medailonek - cislo, radio/nfc, baud rate / nejakou nfc charakterizaci, plny/prazdny
     
     // skip if no button is pressed
-    if (!is_pressed(BUTTON1_PIN) && !is_pressed(BUTTON1_PIN)) {
+    if (!isPressed(BUTTON1_PIN) && !isPressed(BUTTON1_PIN)) {
         delay(10);
         return;
     }
 
-    if (is_pressed(BUTTON1_PIN)) {
+    if (isPressed(BUTTON1_PIN)) {
         Serial.println("Button 1 pressed, reading radio...");
         if (readRadio(currentSlot) == -1) {
             Serial.println("ERROR: Failed to read radio.");
@@ -54,7 +51,7 @@ void loop() {
         delay(500);
     }
 
-    if (is_pressed(BUTTON2_PIN)) {
+    if (isPressed(BUTTON2_PIN)) {
         if (signals[currentSlot].getData().size() == 0) {
             Serial.println("ERROR: Selected slot is empty, nothing to write.");
             return;
