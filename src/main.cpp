@@ -14,8 +14,8 @@ void setup() {
 
     // setup tlacitek - volny je jeste GPIO 8
     //pinMode(21, INPUT); // move up
-    pinMode(BUTTON2_PIN, INPUT_PULLUP); // click ok
-    pinMode(BUTTON1_PIN, INPUT_PULLUP); // move down - rotary array
+    pinMode(RADIO_TRANSMIT_BUTTON_PIN, INPUT_PULLUP); // click ok
+    pinMode(RADIO_READ_BUTTON_PIN, INPUT_PULLUP); // move down - rotary array
     pinMode(LED_PIN, OUTPUT);
 
 }
@@ -36,12 +36,12 @@ void loop() {
         // kazdy slot by mel mit nejaky svuj medailonek - cislo, radio/nfc, baud rate / nejakou nfc charakterizaci, plny/prazdny
     
     // skip if no button is pressed
-    if (!isPressed(BUTTON1_PIN) && !isPressed(BUTTON1_PIN)) {
+    if (!isPressed(RADIO_READ_BUTTON_PIN) && !isPressed(RADIO_TRANSMIT_BUTTON_PIN)) {
         delay(10);
         return;
     }
 
-    if (isPressed(BUTTON1_PIN)) {
+    if (isPressed(RADIO_READ_BUTTON_PIN)) {
         Serial.println("Button 1 pressed, reading radio...");
         if (readRadio(currentSlot) == -1) {
             Serial.println("ERROR: Failed to read radio.");
@@ -51,9 +51,10 @@ void loop() {
         delay(500);
     }
 
-    if (isPressed(BUTTON2_PIN)) {
+    if (isPressed(RADIO_TRANSMIT_BUTTON_PIN)) {
+        Serial.println("Button 2 pressed, transmitting radio...");
         if (signals[currentSlot].getData().size() == 0) {
-            Serial.println("ERROR: Selected slot is empty, nothing to write.");
+            Serial.println("ERROR: Selected slot is empty, nothing to transmit.");
             return;
         }
         

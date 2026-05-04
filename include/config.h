@@ -1,8 +1,15 @@
 #pragma once
 
-#define BUTTON1_PIN 21
-#define BUTTON2_PIN 20
+#define RADIO_READ_BUTTON_PIN 21
+#define RADIO_TRANSMIT_BUTTON_PIN 20
+
+#define NFC_READ_BUTTON_PIN 21
+#define NFC_WRITE_BUTTON_PIN 20
+
 #define LED_PIN 10
 
 #define RADIO_SLOTS 5
 #define NFC_SLOTS 5
+
+#define NFC_READ_TIMEOUT_MS 10000
+

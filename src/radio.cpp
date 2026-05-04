@@ -10,6 +10,8 @@ const int DELKA_SNIMANI_RADIO = 2000;
 // radio definitions
 CC1101::Radio radio(7, 4, 5, 6);
 
+radioSignal signals[RADIO_SLOTS];
+
 int radioSetup(double baud, int length) {
 
     if (radio.begin(CC1101::MOD_ASK_OOK, 433.92, baud) != CC1101::STATUS_OK) { // baud rate je tu jedno

@@ -14,7 +14,9 @@ class nfcSignal{
     protected:
 };
 
-extern nfcSignal nfcs[NFC_SLOTS];
+extern nfcSignal nfcSignals[NFC_SLOTS];
 
-void setupNFC();
-void handleNFC();
+int setupNFC();
+nfcSignal readNFC();
+int saveNFC(int slot, nfcSignal signal);
+void writeNFC(nfcSignal signal);
