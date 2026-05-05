@@ -5,10 +5,12 @@
 #include <Adafruit_PN532.h>
 #include <vector>
 #include <string.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 using namespace std;
 
-// radio definitions
+// radio definitions (cs, clk, miso, mosi)
 CC1101::Radio radio(7, 4, 5, 6);
 
 const int CAPTURES_PER_RATE = 4;
@@ -16,10 +18,25 @@ const double baudRates[] = { 1.0, 1.2, 2.0, 2.4, 4.0, 4.8, 9.6 }; // vyrazeno: 0
 const int numBaudRates = sizeof(baudRates) / sizeof(baudRates[0]);
 const int DELKA_SNIMANI_RADIO = 2000;
 
+// oled definitions (clk, mosi, res, dc, cs): 4, 6, 20, 10, 9
+#define OLED_MOSI 6
+#define OLED_CLK  4
+#define OLED_DC   10
+#define OLED_CS   9
+#define OLED_RST  20
+
+Adafruit_SSD1306 display(128, 64, OLED_MOSI, OLED_CLK, OLED_DC, OLED_RST, OLED_CS);
+
+// pn532 definitions (clk, miso, mosi, cs): 4, 5, 6, 21
+#define PN532_CS 21
+Adafruit_PN532 nfc(PN532_CS);
+
 // buttons + led definitions
-#define button1 21
-#define button2 20
-#define led 10
+#define button1 0
+#define button2 1
+#define button3 2
+#define led 8
+
 int currentSlot = 0; // pri zapnuti bude na obrazovce automaticky slot 0
 
 class radioSignal{
@@ -315,12 +332,16 @@ void setup() {
     Serial.begin(115200);
     Serial.println("warmin' up");
 
-    // setup tlacitek - volny je jeste GPIO 8
-    //pinMode(21, INPUT); // move up
-    pinMode(button2, INPUT_PULLUP); // click ok
-    pinMode(button1, INPUT_PULLUP); // move down - rotary array
+    pinMode(button1, INPUT_PULLUP);
+    pinMode(button2, INPUT_PULLUP);
+    pinMode(button3, INPUT_PULLUP);
     pinMode(led, OUTPUT);
 
+    if (!display.begin(SSD1306_SWITCHCAPVCC)) {
+        Serial.println("OLED init failed!");
+    }
+    display.clearDisplay();
+    display.display();
 }
 
 void loop() {
@@ -328,6 +349,8 @@ void loop() {
     Serial.print(digitalRead(button1));
     Serial.print(" button2: ");
     Serial.print(digitalRead(button2));
+    Serial.print(" button3: ");
+    Serial.print(digitalRead(button3));
     Serial.print(" delka zachycenych dat: ");
     Serial.println(signaly[currentSlot].getData().size());
 
@@ -336,17 +359,33 @@ void loop() {
         // tj. prve budes tlacitkem 1 prochazet sloty a tlacitkem 2 zvolis slot, pak se ti objevi obrazovka s moznymi akcemi
         // tu budes opet prochazet pomoci tlacitka 1 a pomoci tlacitka 2 ji vyberes
         // kazdy slot by mel mit nejaky svuj medailonek - cislo, radio/nfc, baud rate / nejakou nfc charakterizaci, plny/prazdny
+
     if (digitalRead(button1) == LOW){
         if (readRadio(currentSlot) == -1) { Serial.println("failed to read radio"); }
     }
+    if (digitalRead(button2) == LOW){
 
-    if (digitalRead(button2) == LOW) {
+        digitalWrite(led, HIGH);
+        delay(500);
+        digitalWrite(led, LOW);
+    }
+    if (digitalRead(button3) == LOW){
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        display.setCursor(0, 0);
+        display.println("Hello!");
+        display.display();
+    }
+
+
+    /*if (digitalRead(button2) == LOW) {
         if (signaly[currentSlot].getData().size() == 0) {
             Serial.println("prazdny slot, neni co vyslat");
         } else {
-            writeRadio(signaly[currentSlot]);
+            //writeRadio(signaly[currentSlot]);
         }
-    }
+    }*/
     
-    delay(10);
+    delay(300);
 }
