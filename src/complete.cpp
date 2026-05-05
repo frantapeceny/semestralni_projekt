@@ -347,11 +347,11 @@ void setup() {
 void loop() {
     Serial.print("button1: ");
     Serial.print(digitalRead(button1));
-    Serial.print(" button2: ");
+    Serial.print("\tbutton2: ");
     Serial.print(digitalRead(button2));
-    Serial.print(" button3: ");
+    Serial.print("\tbutton3: ");
     Serial.print(digitalRead(button3));
-    Serial.print(" delka zachycenych dat: ");
+    Serial.print("\tdelka zachycenych dat: ");
     Serial.println(signaly[currentSlot].getData().size());
 
     // button inputs binded with its respective actions
