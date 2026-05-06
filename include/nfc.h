@@ -7,10 +7,10 @@ using namespace std;
 
 class nfcSignal{
     private:
-        vector <uint8_t> data;
+        vector <uint8_t> uid;
     public:
-        vector <uint8_t> getData() const { return data; }
-        void setData( vector <uint8_t> givenData) { data = givenData; }
+        vector <uint8_t> getUID() const { return uid; }
+        void setUID( vector <uint8_t> givenUID) { uid = givenUID; }
     protected:
 };
 

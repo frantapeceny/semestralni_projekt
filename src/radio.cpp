@@ -1,4 +1,5 @@
 #include "radio.h"
+#include "memory.h"
 #include <cc1101.h>
 #include <string.h>
 
@@ -10,7 +11,7 @@ const int DELKA_SNIMANI_RADIO = 2000;
 // radio definitions
 CC1101::Radio radio(7, 4, 5, 6);
 
-radioSignal signals[RADIO_SLOTS];
+radioSignal radioSignals[RADIO_SLOTS];
 
 int radioSetup(double baud, int length) {
 
@@ -229,8 +230,13 @@ int readRadio(int currentSlot) {
     radioSignal signal;
     vector<uint8_t> sequence = extractCycle(data);
     signal.setBaudRate(baudRate);
-    signal.setData(sequence);  
-    signals[currentSlot] = signal;
+    signal.setData(sequence);
+
+    // save into RAM
+    saveDataIntoRadioSlotRAM(currentSlot, signal);
+
+    // save into permanent memory
+    saveRadioSlotPermanently(currentSlot);
 
     digitalWrite(LED_PIN, LOW);
     printData(signal.getData());

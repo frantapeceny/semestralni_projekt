@@ -1,11 +1,10 @@
 #include <Arduino.h>
+#include "config.h"
+#include "memory.h"
 #include "radio.h"
 #include "utils.h"
-#include "config.h"
 
-using namespace std;
-
-int currentSlot = 0; // pri zapnuti bude na obrazovce automaticky slot 0
+int currentSlot = 0;
 
 void setup() {
     Serial.begin(115200);
@@ -13,11 +12,13 @@ void setup() {
     Serial.println("warmin' up");
 
     // setup tlacitek - volny je jeste GPIO 8
-    //pinMode(21, INPUT); // move up
+    // pinMode(21, INPUT); // move up
     pinMode(RADIO_TRANSMIT_BUTTON_PIN, INPUT_PULLUP); // click ok
     pinMode(RADIO_READ_BUTTON_PIN, INPUT_PULLUP); // move down - rotary array
     pinMode(LED_PIN, OUTPUT);
 
+    // load from persistent memory
+    loadAllSlotsFromMemory();
 }
 
 void loop() {

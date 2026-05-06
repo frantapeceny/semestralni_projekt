@@ -1,4 +1,6 @@
 #include "nfc.h"
+#include "memory.h"
+#include "utils.h"
 #include <SPI.h>
 #include <Adafruit_PN532.h>
 #include <vector>
@@ -41,9 +43,7 @@ nfcSignal readNFC() {
     
     if (success) {
         Serial.println("NFC signal detected.");
-        Serial.printf("UID length: ");
-        Serial.print(uidLength, DEC);
-        Serial.println(" bytes");
+        Serial.printf("UID length: %d bytes.\n", uidLength);
         Serial.print("UID Value: ");
 
         for (uint8_t i = 0; i < uidLength; i++) {
@@ -53,10 +53,10 @@ nfcSignal readNFC() {
         Serial.println();
 
         // create vector from uid data
-        vector<uint8_t> cardData(uidBuffer, uidBuffer + uidLength);
+        vector<uint8_t> cardUID(uidBuffer, uidBuffer + uidLength);
         
-        // save into object
-        capturedSignal.setData(cardData);
+        // put into object
+        capturedSignal.setUID(cardUID);
     } else {
         Serial.println("Read timed out. No NFC detected.");
     }
@@ -65,27 +65,25 @@ nfcSignal readNFC() {
     return capturedSignal;
 }
 
+// SAVES INTO RAM THEN CALLS memory.cpp TO SAVE INTO PERMANENT MEMORY
 int saveNFC(int slot, nfcSignal signal) {
-    if (slot < 0 || slot >= NFC_SLOTS) {
-        Serial.println("ERROR: Invalid slot.");
-        return -1;
-    }
-    
-    if (signal.getData().size() == 0) {
+    if (signal.getUID().size() == 0) {
         Serial.println("ERROR: Can't save empty NFC data.");
         return -1;
     }
     
-    nfcSignals[slot] = signal;
-    // TODO: add saving to flash memory
-    Serial.print("SUCCESS: NFC data saved to slot ");
-    Serial.println(slot);
-    
+    // save into RAM
+    saveDataIntoNFCSlotRAM(slot, signal);
+
+    // save the slot permanently
+    saveNFCSlotPermanently(slot);
+
+    Serial.printf("SUCCESS: NFC data saved to slot %d.\n", slot);
     return 0;
 }
 
 void writeNFC(nfcSignal signal) {
-    vector<uint8_t> uid = signal.getData();
+    vector<uint8_t> uid = signal.getUID();
     
     if (uid.size() != 4) {
         Serial.println("ERROR: Only 4-byte UIDs allowed.");

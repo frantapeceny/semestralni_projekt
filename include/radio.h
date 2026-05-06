@@ -16,7 +16,7 @@ class radioSignal {
         int getBaudRate() { return baudRate; }
 };
 
-extern radioSignal signals[RADIO_SLOTS];
+extern radioSignal radioSignals[RADIO_SLOTS];
 
 int radioSetup(double baud, int length);
 int readRadio(int currentSlot);
