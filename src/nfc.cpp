@@ -65,7 +65,6 @@ nfcSignal readNFC() {
     return capturedSignal;
 }
 
-// SAVES INTO RAM THEN CALLS memory.cpp TO SAVE INTO PERMANENT MEMORY
 int saveNFC(int slot, nfcSignal signal) {
     if (signal.getUID().size() == 0) {
         Serial.println("ERROR: Can't save empty NFC data.");

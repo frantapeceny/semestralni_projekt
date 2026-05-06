@@ -220,7 +220,7 @@ int readRadio(int currentSlot) {
             data.push_back(zasobnik[i]);
         }
         }
-        Serial.print("noch: ");
+        Serial.print("noch: "); // fr nemecky? xd
         Serial.print(DELKA_SNIMANI_RADIO/1000 - (millis() - start)/1000);
         Serial.println(" sekunde(n)");
     }

@@ -54,12 +54,12 @@ void loop() {
 
     if (isPressed(RADIO_TRANSMIT_BUTTON_PIN)) {
         Serial.println("Button 2 pressed, transmitting radio...");
-        if (signals[currentSlot].getData().size() == 0) {
+        if (radioSignals[currentSlot].getData().size() == 0) {
             Serial.println("ERROR: Selected slot is empty, nothing to transmit.");
             return;
         }
         
-        writeRadio(signals[currentSlot]);
+        writeRadio(radioSignals[currentSlot]);
         delay(500);
     }
 }

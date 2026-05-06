@@ -124,9 +124,17 @@ void saveNFCSlotPermanently(int slot) {
 }
 
 void saveDataIntoRadioSlotRAM(int slot, radioSignal data) {
+    if (!isRadioSlotValid(slot)) {
+        return;
+    }
+    
     radioSignals[slot] = data;
 }
 
 void saveDataIntoNFCSlotRAM(int slot, nfcSignal data) {
+    if (!isNFCSlotValid(slot)) {
+        return;
+    }
+
     nfcSignals[slot] = data;
 }
