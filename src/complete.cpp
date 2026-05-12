@@ -371,7 +371,7 @@ void loop() {
     }
     if (digitalRead(button3) == LOW){
         display.clearDisplay();
-        display.setTextSize(1);
+        display.setTextSize(2);
         display.setTextColor(SSD1306_WHITE);
         display.setCursor(0, 0);
         display.println("Hello!");
@@ -387,5 +387,5 @@ void loop() {
         }
     }*/
     
-    delay(300);
+    delay(300); // kvuli debouncu na tlacitkach - upravit, tohle neni moc efektivni zpusob
 }
