@@ -64,6 +64,94 @@ class nfcSignal{
 radioSignal signaly[5];
 nfcSignal nfcs[5];
 
+void printHex(uint8_t* data, uint8_t length) {
+  for (uint8_t i = 0; i < length; i++) {
+    if (data[i] < 0x10) Serial.print("0");
+    Serial.print(data[i], HEX);
+    if (i < length - 1) Serial.print(":");
+  }
+}
+
+void readMifareClassic(uint8_t* uid, uint8_t uidLength) {
+  Serial.println("Reading Mifare Classic memory...");
+
+  uint8_t keyA[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+
+  for (uint8_t sector = 0; sector < 16; sector++) {
+    bool auth = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, sector * 4, 0, keyA);
+
+    Serial.print("\n--- Sector "); Serial.print(sector); Serial.println(" ---");
+
+    if (!auth) {
+      Serial.println("  Authentication failed! (non-default key?)");
+      continue;
+    }
+
+    for (uint8_t block = 0; block < 4; block++) {
+      uint8_t blockNum = sector * 4 + block;
+      uint8_t data[16];
+
+      bool success = nfc.mifareclassic_ReadDataBlock(blockNum, data);
+      Serial.print("  Block ");
+      if (blockNum < 10) Serial.print("0");
+      Serial.print(blockNum);
+      Serial.print(": ");
+
+      if (success) {
+        printHex(data, 16);
+        Serial.print("  |");
+        for (uint8_t i = 0; i < 16; i++) {
+          if (data[i] >= 32 && data[i] <= 126) Serial.print((char)data[i]);
+          else Serial.print(".");
+        }
+        Serial.print("|");
+      } else {
+        Serial.print("Read failed");
+      }
+      Serial.println();
+    }
+  }
+}
+
+void readNTAG(uint8_t* uid, uint8_t uidLength) {
+  Serial.println("Reading NTAG/Ultralight memory...");
+
+  uint8_t prevData[4] = {0};
+  uint8_t repeatCount = 0;
+
+  for (uint8_t page = 0; page < 231; page++) {
+    uint8_t data[4];
+    bool success = nfc.ntag2xx_ReadPage(page, data);
+
+    if (!success) {
+      Serial.print("Stopped at page "); Serial.println(page);
+      break;
+    }
+
+    // Stop if we're getting repeated identical pages (likely garbage or end of tag)
+    if (memcmp(data, prevData, 4) == 0) {
+      repeatCount++;
+      if (repeatCount > 3) {
+        Serial.print("Stopping - repeated data detected at page ");
+        Serial.println(page);
+        break;
+      }
+    } else {
+      repeatCount = 0;
+    }
+    memcpy(prevData, data, 4);
+
+    Serial.print("  Page ");
+    if (page < 10) Serial.print("0");
+    Serial.print(page);
+    Serial.print(": ");
+    printHex(data, 4);
+    Serial.println();
+
+    delay(10); // small delay to avoid SPI communication errors
+  }
+}
+
 int radioSetup(double baud, int lenght) {
 
     if (radio.begin(CC1101::MOD_ASK_OOK, 433.92, baud) != CC1101::STATUS_OK) { // baud rate je tu jedno
@@ -330,6 +418,7 @@ void writeNFC() {
 
 void setup() {
     Serial.begin(115200);
+    delay(3000);
     Serial.println("warmin' up");
 
     pinMode(button1, INPUT_PULLUP);
@@ -337,14 +426,31 @@ void setup() {
     pinMode(button3, INPUT_PULLUP);
     pinMode(led, OUTPUT);
 
-    if (!display.begin(SSD1306_SWITCHCAPVCC)) {
+    if (!display.begin(SSD1306_EXTERNALVCC)) {
         Serial.println("OLED init failed!");
     }
     display.clearDisplay();
     display.display();
+
+    SPI.begin(4, 5, 6, 21); // explicit hardware SPI pins: SCK, MISO, MOSI, SS
+    if (!nfc.begin()) {
+        Serial.println("NFC init failed!");
+    }
+    uint32_t versiondata = nfc.getFirmwareVersion();
+    if (!versiondata) {
+        Serial.println("ERROR: Didn't find PN532 board. Check wiring!");
+        //while (1);
+    }
+
+    Serial.print("Found chip PN5"); Serial.println((versiondata >> 24) & 0xFF, HEX);
+    Serial.print("Firmware ver. "); Serial.print((versiondata >> 16) & 0xFF, DEC);
+    Serial.print('.'); Serial.println((versiondata >> 8) & 0xFF, DEC);
+
+    nfc.SAMConfig();
 }
 
 void loop() {
+    
     Serial.print("button1: ");
     Serial.print(digitalRead(button1));
     Serial.print("\tbutton2: ");
@@ -360,22 +466,49 @@ void loop() {
         // tu budes opet prochazet pomoci tlacitka 1 a pomoci tlacitka 2 ji vyberes
         // kazdy slot by mel mit nejaky svuj medailonek - cislo, radio/nfc, baud rate / nejakou nfc charakterizaci, plny/prazdny
 
-    if (digitalRead(button1) == LOW){
+    /*if (digitalRead(button1) == LOW){
         if (readRadio(currentSlot) == -1) { Serial.println("failed to read radio"); }
     }
     if (digitalRead(button2) == LOW){
-
         digitalWrite(led, HIGH);
         delay(500);
         digitalWrite(led, LOW);
     }
     if (digitalRead(button3) == LOW){
         display.clearDisplay();
-        display.setTextSize(2);
+        display.setTextSize(1);
         display.setTextColor(SSD1306_WHITE);
-        display.setCursor(0, 0);
+        display.drawRect(0, 0, 128, 64, WHITE);
+        display.drawRect(2, 2, 124, 60, WHITE);
+        display.setCursor(50, 30);
         display.println("Hello!");
         display.display();
+    }*/
+
+    // testing nfc
+    uint8_t uid[7] = { 0 };
+    uint8_t uidLength;
+
+    bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+
+    if (success) {
+        Serial.println("\n----------- Card detected! -----------");
+        Serial.print("UID: ");
+        printHex(uid, uidLength);
+        Serial.println();
+
+        if (uidLength == 4) {
+        Serial.println("Card type: Mifare Classic");
+        readMifareClassic(uid, uidLength);
+        } else if (uidLength == 7) {
+        Serial.println("Card type: NTAG / Mifare Ultralight");
+        readNTAG(uid, uidLength);
+        } else {
+        Serial.println("Unknown card type");
+        }
+
+        Serial.println("\n--------------------------------------");
+        delay(2000);
     }
 
 
@@ -387,5 +520,5 @@ void loop() {
         }
     }*/
     
-    delay(300); // kvuli debouncu na tlacitkach - upravit, tohle neni moc efektivni zpusob
+    delay(50); // kvuli debouncu na tlacitkach - upravit, tohle neni moc efektivni zpusob
 }
