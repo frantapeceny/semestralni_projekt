@@ -1,15 +1,23 @@
 #include <Arduino.h>
-#include "config.h"
-#include "memory.h"
-#include "radio.h"
-#include "utils.h"
+#include "Config.h"
+#include "Storage.h"
+#include "Signal.h"
+#include "NfcManager.h"
+#include "RadioManager.h"
+#include "Utils.h"
+
+using namespace std;
 
 int currentSlot = 0;
+Storage storage;
+NfcManager nfcManager(7);
+RadioManager radioManager(7, 4, 5, 6);
 
 void setup() {
-    Serial.begin(115200);
-    delay(3000);
     Serial.println("warmin' up");
+    Serial.begin(115200);
+
+    nfcManager.begin();
 
     // setup tlacitek - volny je jeste GPIO 8
     // pinMode(21, INPUT); // move up
@@ -17,8 +25,8 @@ void setup() {
     pinMode(RADIO_READ_BUTTON_PIN, INPUT_PULLUP); // move down - rotary array
     pinMode(LED_PIN, OUTPUT);
 
-    // load from persistent memory
-    loadAllSlotsFromMemory();
+    // load slots from flash memory
+    storage.loadAllFromFlash();
 }
 
 void loop() {
@@ -42,24 +50,24 @@ void loop() {
         return;
     }
 
-    if (isPressed(RADIO_READ_BUTTON_PIN)) {
-        Serial.println("Button 1 pressed, reading radio...");
-        if (readRadio(currentSlot) == -1) {
-            Serial.println("ERROR: Failed to read radio.");
-        }
+    // if (isPressed(RADIO_READ_BUTTON_PIN)) {
+    //     Serial.println("Button 1 pressed, reading radio...");
+    //     if (readRadio(currentSlot) == -1) {
+    //         Serial.println("ERROR: Failed to read radio.");
+    //     }
 
-        // delay so that holding button doesn't spam
-        delay(500);
-    }
+    //     // delay so that holding button doesn't spam
+    //     delay(500);
+    // }
 
-    if (isPressed(RADIO_TRANSMIT_BUTTON_PIN)) {
-        Serial.println("Button 2 pressed, transmitting radio...");
-        if (radioSignals[currentSlot].getData().size() == 0) {
-            Serial.println("ERROR: Selected slot is empty, nothing to transmit.");
-            return;
-        }
+    // if (isPressed(RADIO_TRANSMIT_BUTTON_PIN)) {
+    //     Serial.println("Button 2 pressed, transmitting radio...");
+    //     if (radioSignals[currentSlot].getData().size() == 0) {
+    //         Serial.println("ERROR: Selected slot is empty, nothing to transmit.");
+    //         return;
+    //     }
         
-        writeRadio(radioSignals[currentSlot]);
-        delay(500);
-    }
+    //     writeRadio(radioSignals[currentSlot]);
+    //     delay(500);
+    // }
 }

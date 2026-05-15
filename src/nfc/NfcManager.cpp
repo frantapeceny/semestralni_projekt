@@ -1,37 +1,32 @@
-#include "nfc.h"
-#include "memory.h"
-#include "utils.h"
+#include "NfcManager.h"
 #include <SPI.h>
-#include <Adafruit_PN532.h>
-#include <vector>
 
-Adafruit_PN532 nfc(7);
+using namespace std;
 
-nfcSignal nfcSignals[NFC_SLOTS];
+NfcManager::NfcManager(uint8_t csPin) : nfc(csPin) {}
 
-int setupNFC() {
+bool NfcManager::begin() {
     SPI.begin(4, 5, 6, 7);
     nfc.begin();
 
     uint32_t versiondata = nfc.getFirmwareVersion();
     if (!versiondata) {
-        Serial.println("ERROR: Couldn't find PN53x board.");
-        return -1;
+        Serial.println("ERROR: Couldn't find PN53 module.");
+        return false;
     }
 
     nfc.SAMConfig();
-    Serial.println("NFC initialized.");
-    return 0;
+    Serial.println("NFC Manager initialized.");
+    return true;
 }
 
-nfcSignal readNFC() {
-    nfcSignal capturedSignal;
-    uint8_t uidBuffer[7]; // 4 or 7 bytes
+NfcSignal NfcManager::read() {
+    NfcSignal capturedSignal;
+    uint8_t uidBuffer[7];
     uint8_t uidLength;        
     
     Serial.println("Waiting for an NFC signal...");
     
-    // wait to get signal
     bool success = false;
     unsigned long start = millis();
     while (millis() - start < NFC_READ_TIMEOUT_MS) {
@@ -40,48 +35,18 @@ nfcSignal readNFC() {
             break;
         }
     }
-    
+
     if (success) {
-        Serial.println("NFC signal detected.");
-        Serial.printf("UID length: %d bytes.\n", uidLength);
-        Serial.print("UID Value: ");
-
-        for (uint8_t i = 0; i < uidLength; i++) {
-            Serial.print(" 0x"); Serial.print(uidBuffer[i], HEX);
-        }
-
-        Serial.println();
-
-        // create vector from uid data
         vector<uint8_t> cardUID(uidBuffer, uidBuffer + uidLength);
-        
-        // put into object
         capturedSignal.setUID(cardUID);
     } else {
         Serial.println("Read timed out. No NFC detected.");
     }
     
-    // return captured signal (empty vector if timed out)
     return capturedSignal;
 }
 
-int saveNFC(int slot, nfcSignal signal) {
-    if (signal.getUID().size() == 0) {
-        Serial.println("ERROR: Can't save empty NFC data.");
-        return -1;
-    }
-    
-    // save into RAM
-    saveDataIntoNFCSlotRAM(slot, signal);
-
-    // save the slot permanently
-    saveNFCSlotPermanently(slot);
-
-    Serial.printf("SUCCESS: NFC data saved to slot %d.\n", slot);
-    return 0;
-}
-
-void writeNFC(nfcSignal signal) {
+void NfcManager::write(const NfcSignal& signal) {
     vector<uint8_t> uid = signal.getUID();
     
     if (uid.size() != 4) {
@@ -90,7 +55,7 @@ void writeNFC(nfcSignal signal) {
     }
     
     Serial.println("Tap NFC chip to write on...");
-    uint8_t targetUidBuffer[7];
+    uint8_t targetUidBuffer[4];
     uint8_t targetUidLength;
     
     if (!nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, targetUidBuffer, &targetUidLength, 5000)) {
@@ -98,7 +63,7 @@ void writeNFC(nfcSignal signal) {
         return;
     }
     
-    Serial.println("Target NFC chip detecting. Starting UID clone...");
+    Serial.println("Target NFC chip detected. Starting UID clone...");
     
     uint8_t targetKeyA[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
     

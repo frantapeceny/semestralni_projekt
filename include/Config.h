@@ -8,8 +8,7 @@
 
 #define LED_PIN 10
 
-#define RADIO_SLOTS 5
-#define NFC_SLOTS 5
+#define SIGNAL_SLOTS 10
 
 #define NFC_READ_TIMEOUT_MS 10000
 
