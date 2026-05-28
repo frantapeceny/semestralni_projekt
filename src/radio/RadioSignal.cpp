@@ -13,6 +13,9 @@ void RadioSignal::showInfo() const {
     Serial.println(data.size());
 }
 
+String RadioSignal::typeName() const { return "RADIO"; }
+String RadioSignal::shortInfo() const { return String(baudRate) + " kBaud"; }
+
 void RadioSignal::saveToFlash(int slot) const {
     Preferences prefs;
     prefs.begin("radio", false); // false = read/write mode

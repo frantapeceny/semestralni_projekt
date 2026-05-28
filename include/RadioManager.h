@@ -17,8 +17,7 @@ private:
     double baudRateFinder();
 
 public:
-    // constructor
-    RadioManager(uint8_t cs, uint8_t gdo0, uint8_t rst, uint8_t gdo2);
+    RadioManager(uint8_t cs);
 
     RadioSignal capture();
     void transmit(const RadioSignal& signal);

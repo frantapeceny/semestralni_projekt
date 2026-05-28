@@ -7,6 +7,12 @@ private:
     std::vector<Signal*> memory;
 
 public:
+    ~Storage() {
+        for (Signal* s : memory) {
+            delete s;
+        }
+    }
+    int getCount() { return memory.size(); }
     void saveSignal(Signal* sig);
     bool deleteSignal(int index);
     Signal* getSignal(int index);

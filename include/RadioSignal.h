@@ -18,4 +18,6 @@ class RadioSignal : public Signal {
         void transmit() const override;
         void showInfo() const override;
         void saveToFlash(int slot) const override;
+        String typeName() const override;
+        String shortInfo() const override;
 };

@@ -6,14 +6,21 @@ static const double baudRates[] = { 1.0, 1.2, 2.0, 2.4, 4.0, 4.8, 9.6 };
 static const int numBaudRates = sizeof(baudRates) / sizeof(baudRates[0]);
 static const int DELKA_SNIMANI_RADIO = 2000;
 
-RadioManager::RadioManager(uint8_t cs, uint8_t gdo0, uint8_t rst, uint8_t gdo2) : radio(cs, gdo0, rst, gdo2) {}
+RadioManager::RadioManager(uint8_t cs) : radio(cs, SPI_SCK, SPI_MISO, SPI_MOSI) {}
 
 int RadioManager::setupRadio(double baud, int length) {
-    if (radio.begin(CC1101::MOD_ASK_OOK, 433.92, baud) != CC1101::STATUS_OK) {  // baud rate je tu jedno
+    if (radio.begin(CC1101::MOD_ASK_OOK, 433.92, baud) != CC1101::STATUS_OK) {
         Serial.println("CC1101 init failed!");
         delay(200);
         return -1;
     }
+    // radio.begin() called SPI.begin(..., cs) which enables hardware CS on GPIO7.
+    // SPI.end() + SPI.begin(-1 for SS) fully tears down and rebuilds the bus
+    // without any hardware-managed SS pin. Then restore GPIO7 as software output.
+    SPI.end();
+    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, -1);
+    pinMode(CC1101_CS, OUTPUT);
+    digitalWrite(CC1101_CS, HIGH);
     radio.setSyncMode(CC1101::SYNC_MODE_NO_PREAMBLE);  // ctu vsechno, co jde okolo - ne jen nejaky uzsi vyber
     radio.setCrc(false);  // accept packets regardless of CRC
     radio.setAddressFilteringMode(CC1101::ADDR_FILTER_MODE_NONE);

@@ -11,6 +11,9 @@ void NfcSignal::showInfo() const {
     Serial.println(uid.size());
 }
 
+String NfcSignal::typeName() const { return "NFC"; }
+String NfcSignal::shortInfo() const { return "UID: " + String(uid.size()) + " bytes"; }
+
 void NfcSignal::saveToFlash(int slot) const {
     Preferences prefs;
     prefs.begin("nfc", false); // false = read/write

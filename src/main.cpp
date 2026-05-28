@@ -4,70 +4,185 @@
 #include "Signal.h"
 #include "NfcManager.h"
 #include "RadioManager.h"
-#include "Utils.h"
+#include "DisplayManager.h"
 
-using namespace std;
-
-int currentSlot = 0;
 Storage storage;
-NfcManager nfcManager(7);
-RadioManager radioManager(7, 4, 5, 6);
+NfcManager nfcManager(PN532_SS);
+RadioManager radioManager(CC1101_CS);
+DisplayManager displayManager(OLED_DC, OLED_RST, OLED_CS);
+
+volatile bool firedLeft = false, firedMid = false, firedRight = false;
+
+void IRAM_ATTR isrLeft()  { firedLeft  = true; }
+void IRAM_ATTR isrMid()   { firedMid   = true; }
+void IRAM_ATTR isrRight() { firedRight = true; }
+
+enum class AppState { BROWSING, SIGNAL_MENU, TYPE_SELECTOR };
+
+AppState state = AppState::BROWSING;
+int browseIndex = 0;
+int menuIndex = 0;
+bool needsRedraw = true;
+
+void silencePeripherals() {
+    digitalWrite(PN532_SS, HIGH);
+    digitalWrite(CC1101_CS, HIGH);
+}
+
+void redraw() {
+    silencePeripherals();
+    switch (state) {
+        case AppState::BROWSING:
+            displayManager.drawSignalBrowser(browseIndex, storage.getCount(), storage.getSignal(browseIndex));
+            break;
+        case AppState::SIGNAL_MENU:
+            displayManager.drawSignalMenu(menuIndex);
+            break;
+        case AppState::TYPE_SELECTOR:
+            displayManager.drawTypeSelector(menuIndex);
+            break;
+    }
+}
 
 void setup() {
-    Serial.println("warmin' up");
     Serial.begin(115200);
 
-    nfcManager.begin();
+    pinMode(PN532_SS, OUTPUT);
+    digitalWrite(PN532_SS, HIGH);
+    pinMode(OLED_CS, OUTPUT);
+    digitalWrite(OLED_CS, HIGH);
+    pinMode(CC1101_CS, OUTPUT);
+    digitalWrite(CC1101_CS, HIGH);
 
-    // setup tlacitek - volny je jeste GPIO 8
-    // pinMode(21, INPUT); // move up
-    pinMode(RADIO_TRANSMIT_BUTTON_PIN, INPUT_PULLUP); // click ok
-    pinMode(RADIO_READ_BUTTON_PIN, INPUT_PULLUP); // move down - rotary array
+    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, -1);
+
+    nfcManager.begin();
+    silencePeripherals();
+
+    if (displayManager.begin()) {
+        silencePeripherals();
+        displayManager.drawStatusMessage("BOOTING...", "Loading signals...");
+    }
+
+    pinMode(BUTTON_1, INPUT_PULLUP);
+    pinMode(BUTTON_2, INPUT_PULLUP);
+    pinMode(BUTTON_3, INPUT_PULLUP);
+    attachInterrupt(BUTTON_1, isrLeft, FALLING);
+    attachInterrupt(BUTTON_2, isrMid, FALLING);
+    attachInterrupt(BUTTON_3, isrRight, FALLING);
     pinMode(LED_PIN, OUTPUT);
 
-    // load slots from flash memory
     storage.loadAllFromFlash();
 }
 
 void loop() {
-    // debug:
-    // Serial.print("button1: ");
-    // Serial.print(digitalRead(button1));
-    // Serial.print(" button2: ");
-    // Serial.print(digitalRead(button2));
-    // Serial.print(" delka zachycenych dat: ");
-    // Serial.println(signaly[currentSlot].getData().size());
+    // button debounce (so it doesnt accidentally trigger twice when only intended to be pressed once)
+    static unsigned long lastLeft = 0, lastMid = 0, lastRight = 0;
+    bool left = false, mid = false, right = false;
 
-    // button inputs binded with its respective actions
-        // jeden button bude pricitat currentSlot, actions, druhy bude confirmovat
-        // tj. prve budes tlacitkem 1 prochazet sloty a tlacitkem 2 zvolis slot, pak se ti objevi obrazovka s moznymi akcemi
-        // tu budes opet prochazet pomoci tlacitka 1 a pomoci tlacitka 2 ji vyberes
-        // kazdy slot by mel mit nejaky svuj medailonek - cislo, radio/nfc, baud rate / nejakou nfc charakterizaci, plny/prazdny
-    
-    // skip if no button is pressed
-    if (!isPressed(RADIO_READ_BUTTON_PIN) && !isPressed(RADIO_TRANSMIT_BUTTON_PIN)) {
-        delay(10);
-        return;
+    if (firedLeft && millis() - lastLeft > 200) {
+        firedLeft = false;
+        lastLeft = millis();
+        left = true;
+    }
+    if (firedMid && millis() - lastMid > 200) {
+        firedMid = false;
+        lastMid = millis();
+        mid = true;
+    }
+    if (firedRight && millis() - lastRight > 200) {
+        firedRight = false;
+        lastRight = millis();
+        right = true;
     }
 
-    // if (isPressed(RADIO_READ_BUTTON_PIN)) {
-    //     Serial.println("Button 1 pressed, reading radio...");
-    //     if (readRadio(currentSlot) == -1) {
-    //         Serial.println("ERROR: Failed to read radio.");
-    //     }
+    if (left || mid || right) {
+        needsRedraw = true;
+    }
 
-    //     // delay so that holding button doesn't spam
-    //     delay(500);
-    // }
+    // display menu
+    switch (state) {
+        case AppState::BROWSING:
+            if (left && browseIndex > 0) {
+                // scroll list to left
+                browseIndex--;
+            }
+            if (right && browseIndex < storage.getCount()) {
+                // scroll list to right
+                browseIndex++;
+            }
+            if (mid) {
+                // select
+                menuIndex = 0;
+                // create new signal if we are at index == saved signal count or select the current signal otherwise
+                state = (browseIndex == storage.getCount()) ? AppState::TYPE_SELECTOR : AppState::SIGNAL_MENU;
+            }
+            break;
 
-    // if (isPressed(RADIO_TRANSMIT_BUTTON_PIN)) {
-    //     Serial.println("Button 2 pressed, transmitting radio...");
-    //     if (radioSignals[currentSlot].getData().size() == 0) {
-    //         Serial.println("ERROR: Selected slot is empty, nothing to transmit.");
-    //         return;
-    //     }
-        
-    //     writeRadio(radioSignals[currentSlot]);
-    //     delay(500);
-    // }
+        case AppState::SIGNAL_MENU:
+            // left to go back
+            if (left) {
+                state = AppState::BROWSING;
+                break;
+            }
+            // middle to scroll
+            if (mid) {
+                menuIndex = 1 - menuIndex;
+                break;
+            }
+            // right to select (delete or transmit)
+            if (right) {
+                if (menuIndex == 0) {
+                    silencePeripherals();
+                    displayManager.drawStatusMessage("TRANSMITTING...", "Please wait...");
+                    storage.getSignal(browseIndex)->transmit();
+                } else {
+                    storage.deleteSignal(browseIndex);
+                    if (browseIndex > 0) {
+                        browseIndex--;
+                    }
+                }
+                // auto go back to scrolling saved signals
+                state = AppState::BROWSING;
+            }
+            break;
+
+        // when saving a new signal pick nfc/radio
+        case AppState::TYPE_SELECTOR:
+            if (left) {
+                state = AppState::BROWSING;
+                break;
+            }
+            if (mid) {
+                menuIndex = 1 - menuIndex;
+                break;
+            }
+            // right to select and execute capture logic of selected type
+            if (right) {
+                if (menuIndex == 0) {
+                    silencePeripherals();
+                    displayManager.drawStatusMessage("CAPTURING...", "Scanning radio...", "~30s, please wait");
+                    RadioSignal captured = radioManager.capture();
+                    if (!captured.getData().empty()) {
+                        storage.saveSignal(new RadioSignal(captured));
+                        browseIndex = storage.getCount() - 1;
+                    }
+                } else {
+                    silencePeripherals();
+                    displayManager.drawStatusMessage("CAPTURING...", "Hold card to reader", "~10s, please wait");
+                    NfcSignal read = nfcManager.read();
+                    if (!read.getUID().empty()) {
+                        storage.saveSignal(new NfcSignal(read));
+                        browseIndex = storage.getCount() - 1;
+                    }
+                }
+                state = AppState::BROWSING;
+            }
+            break;
+    }
+
+    if (needsRedraw) {
+        redraw();
+        needsRedraw = false;
+    }
 }
