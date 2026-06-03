@@ -1,10 +1,11 @@
 #include <Arduino.h>
 #include "Config.h"
 #include "Storage.h"
-#include "Signal.h"
+#include "Signal_.h"
 #include "NfcManager.h"
 #include "RadioManager.h"
 #include "DisplayManager.h"
+#include "snake.h"
 
 Storage storage;
 NfcManager nfcManager(PN532_SS);
@@ -17,7 +18,7 @@ void IRAM_ATTR isrLeft()  { firedLeft  = true; }
 void IRAM_ATTR isrMid()   { firedMid   = true; }
 void IRAM_ATTR isrRight() { firedRight = true; }
 
-enum class AppState { BROWSING, SIGNAL_MENU, TYPE_SELECTOR };
+enum class AppState { BROWSING, SIGNAL_MENU, TYPE_SELECTOR, SNAKE };
 
 AppState state = AppState::BROWSING;
 int browseIndex = 0;
@@ -27,6 +28,13 @@ bool needsRedraw = true;
 void silencePeripherals() {
     digitalWrite(PN532_SS, HIGH);
     digitalWrite(CC1101_CS, HIGH);
+}
+
+void ledON() {
+    digitalWrite(LED_PIN, HIGH);
+}
+void ledOFF(){
+    digitalWrite(LED_PIN, LOW);
 }
 
 void redraw() {
@@ -40,6 +48,9 @@ void redraw() {
             break;
         case AppState::TYPE_SELECTOR:
             displayManager.drawTypeSelector(menuIndex);
+            break;
+        case AppState::SNAKE:
+            displayManager.drawSnakeEnv();
             break;
     }
 }
@@ -79,21 +90,26 @@ void loop() {
     // button debounce (so it doesnt accidentally trigger twice when only intended to be pressed once)
     static unsigned long lastLeft = 0, lastMid = 0, lastRight = 0;
     bool left = false, mid = false, right = false;
-
-    if (firedLeft && millis() - lastLeft > 200) {
+    if (firedLeft && millis() - lastLeft > 300) {
         firedLeft = false;
         lastLeft = millis();
-        left = true;
+        if (digitalRead(BUTTON_1) == LOW) {  // confirm it's a real press
+            left = true;
+        }
     }
-    if (firedMid && millis() - lastMid > 200) {
+    if (firedMid && millis() - lastMid > 300) {
         firedMid = false;
         lastMid = millis();
-        mid = true;
+        if (digitalRead(BUTTON_2) == LOW) {  // confirm it's a real press
+            mid = true;
+        }
     }
-    if (firedRight && millis() - lastRight > 200) {
+    if (firedRight && millis() - lastRight > 300) {
         firedRight = false;
         lastRight = millis();
-        right = true;
+        if (digitalRead(BUTTON_3) == LOW) {  // confirm it's a real press
+            right = true;
+        }
     }
 
     if (left || mid || right) {
@@ -106,6 +122,10 @@ void loop() {
             if (left && browseIndex > 0) {
                 // scroll list to left
                 browseIndex--;
+            } else if (left && browseIndex == 0) {
+                snake.init();
+                state = AppState::SNAKE;
+                break;
             }
             if (right && browseIndex < storage.getCount()) {
                 // scroll list to right
@@ -125,17 +145,19 @@ void loop() {
                 state = AppState::BROWSING;
                 break;
             }
-            // middle to scroll
-            if (mid) {
+            // right to scroll
+            if (right) {
                 menuIndex = 1 - menuIndex;
                 break;
             }
-            // right to select (delete or transmit)
-            if (right) {
+            // mid to select (delete or transmit)
+            if (mid) {
                 if (menuIndex == 0) {
                     silencePeripherals();
-                    displayManager.drawStatusMessage("TRANSMITTING...", "Please wait...");
+                    displayManager.drawStatusMessage("TRANSMITTING...", "please wait");
+                    digitalWrite(LED_PIN, HIGH);
                     storage.getSignal(browseIndex)->transmit();
+                    digitalWrite(LED_PIN, LOW);
                 } else {
                     storage.deleteSignal(browseIndex);
                     if (browseIndex > 0) {
@@ -153,32 +175,72 @@ void loop() {
                 state = AppState::BROWSING;
                 break;
             }
-            if (mid) {
+            if (right) {
                 menuIndex = 1 - menuIndex;
                 break;
             }
-            // right to select and execute capture logic of selected type
-            if (right) {
+            // mid to select and execute capture logic of selected type
+            if (mid) {
                 if (menuIndex == 0) {
                     silencePeripherals();
-                    displayManager.drawStatusMessage("CAPTURING...", "Scanning radio...", "~30s, please wait");
+                    displayManager.drawStatusMessage("CAPTURING...", "scanning radio...", "~15s, please wait");
+                    digitalWrite(LED_PIN, HIGH);
                     RadioSignal captured = radioManager.capture();
                     if (!captured.getData().empty()) {
                         storage.saveSignal(new RadioSignal(captured));
                         browseIndex = storage.getCount() - 1;
                     }
+                    digitalWrite(LED_PIN, LOW);
                 } else {
                     silencePeripherals();
-                    displayManager.drawStatusMessage("CAPTURING...", "Hold card to reader", "~10s, please wait");
+                    displayManager.drawStatusMessage("CAPTURING...", "hold card to reader", "~10s, please wait");
+                    digitalWrite(LED_PIN, HIGH);
                     NfcSignal read = nfcManager.read();
                     if (!read.getUID().empty()) {
                         storage.saveSignal(new NfcSignal(read));
                         browseIndex = storage.getCount() - 1;
                     }
+                    digitalWrite(LED_PIN, LOW);
                 }
                 state = AppState::BROWSING;
             }
             break;
+
+        case AppState::SNAKE:
+            if (!snake.isAlive()) {
+                if (right) {
+                    state = AppState::BROWSING;
+                    needsRedraw = true;
+                }
+                if (left) {
+                    snake.init();
+                    //state = AppState::SNAKE;
+                    break;
+                }
+                displayManager.drawSnakeGameOver(snake.getScore());
+                break;
+            }
+            if (snake.isPaused()) {
+                if (left || right) snake.cyclePauseIndex();
+                if (mid) {
+                    if (snake.getPauseIndex() == 1) {
+                        state = AppState::BROWSING;
+                    } else {
+                        snake.togglePause();
+                    }
+                }
+                displayManager.drawSnakePauseMenu();
+                break;
+            }
+            // normal gameplay
+            if (left)  snake.turnLeft();
+            if (right) snake.turnRight();
+            if (mid)   snake.togglePause();
+            if (snake.shouldTick()) snake.tick();
+            displayManager.drawSnakeEnv();
+            snake.updateLed();
+            break;
+            
     }
 
     if (needsRedraw) {

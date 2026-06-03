@@ -3,7 +3,7 @@
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include "Signal.h"
+#include "Signal_.h"
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -26,6 +26,10 @@ public:
     void drawSignalMenu(int selectedIndex);
     void drawTypeSelector(int selectedIndex);
     void drawStatusMessage(String header, String line1, String line2 = "");
+
+    void drawSnakeEnv();
+    void drawSnakePauseMenu();
+    void drawSnakeGameOver(int score);
 };
 
 extern DisplayManager displayManager;

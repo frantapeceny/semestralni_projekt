@@ -14,7 +14,7 @@ void RadioSignal::showInfo() const {
 }
 
 String RadioSignal::typeName() const { return "RADIO"; }
-String RadioSignal::shortInfo() const { return String(baudRate) + " kBaud"; }
+String RadioSignal::shortInfo() const { return "freq: " + String(baudRate) + " kBaud"; }
 
 void RadioSignal::saveToFlash(int slot) const {
     Preferences prefs;
@@ -23,7 +23,7 @@ void RadioSignal::saveToFlash(int slot) const {
     String baudKey = "b_" + String(slot);
     String dataKey = "d_" + String(slot);
     
-    prefs.putInt(baudKey.c_str(), (int)baudRate); // TODO: change to float?
+    prefs.putFloat(baudKey.c_str(), baudRate);
     prefs.putBytes(dataKey.c_str(), data.data(), data.size());
 
     prefs.end();

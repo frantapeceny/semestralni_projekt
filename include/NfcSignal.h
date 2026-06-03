@@ -1,6 +1,6 @@
 #pragma once
 #include "Config.h"
-#include "Signal.h"
+#include "Signal_.h"
 #include <Arduino.h>
 #include <vector>
 
@@ -16,4 +16,5 @@ class NfcSignal : public Signal {
         void saveToFlash(int slot) const override;
         String typeName() const override;
         String shortInfo() const override;
+        String returnUID() const;
 };

@@ -2,13 +2,13 @@
 #include <string.h>
 
 static const int CAPTURES_PER_RATE = 4;
-static const double baudRates[] = { 1.0, 1.2, 2.0, 2.4, 4.0, 4.8, 9.6 }; 
+static const float baudRates[] = { 1.0, 1.2, 2.0, 2.4, 4.0, 4.8, 9.6 }; 
 static const int numBaudRates = sizeof(baudRates) / sizeof(baudRates[0]);
 static const int DELKA_SNIMANI_RADIO = 2000;
 
 RadioManager::RadioManager(uint8_t cs) : radio(cs, SPI_SCK, SPI_MISO, SPI_MOSI) {}
 
-int RadioManager::setupRadio(double baud, int length) {
+int RadioManager::setupRadio(float baud, int length) {
     if (radio.begin(CC1101::MOD_ASK_OOK, 433.92, baud) != CC1101::STATUS_OK) {
         Serial.println("CC1101 init failed!");
         delay(200);
@@ -24,7 +24,7 @@ int RadioManager::setupRadio(double baud, int length) {
     radio.setSyncMode(CC1101::SYNC_MODE_NO_PREAMBLE);  // ctu vsechno, co jde okolo - ne jen nejaky uzsi vyber
     radio.setCrc(false);  // accept packets regardless of CRC
     radio.setAddressFilteringMode(CC1101::ADDR_FILTER_MODE_NONE);
-    radio.setPacketLengthMode(CC1101::PKT_LEN_MODE_FIXED, length);
+    radio.setPacketLengthMode(CC1101::PKT_LEN_MODE_FIXED, 1);
     return 0;
 }
 
@@ -97,7 +97,7 @@ float RadioManager::scoreCaptures(uint8_t captures[][64], int numCaptures) {
 
 std::vector<uint8_t> RadioManager::extractCycle(std::vector<uint8_t>& data) {
     int n = data.size();
-    for (int len = 10; len <= n / 2; len++) {
+    for (int len = 4; len <= n / 2; len++) {
         bool match = true;
         for (int i = 0; i < len; i++) {
             if (data[i] != data[i + len]) {
@@ -106,17 +106,17 @@ std::vector<uint8_t> RadioManager::extractCycle(std::vector<uint8_t>& data) {
             }
         }
         if (match) {
-            Serial.printf("nalezen cyklus delky %d\n", len);
+            Serial.printf("Cycle found, length %d bytes\n", len);
             return std::vector<uint8_t>(data.begin(), data.begin() + len);
         }
     }
-    
-    Serial.println("Cyklus nenalezen, pouzivam prvnich 64 bytu");
+
+    Serial.println("No cycle found, returning first 64 bytes");
     int cutoff = std::min((int)data.size(), 64);
     return std::vector<uint8_t>(data.begin(), data.begin() + cutoff);
 }
 
-double RadioManager::baudRateFinder() {
+float RadioManager::baudRateFinder() {
     float bestScore = -1;
     double bestBaud = 0;
     uint8_t captures[CAPTURES_PER_RATE][64];
@@ -129,14 +129,19 @@ double RadioManager::baudRateFinder() {
         
         Serial.printf("\n[%.1f kBaud] Press remote now (collecting %d captures)...\n", baud, CAPTURES_PER_RATE);
         int collected = 0;
-        unsigned long deadline = millis() + 4000;  
+        unsigned long deadline = millis() + 5000;  
 
         while (collected < CAPTURES_PER_RATE && millis() < deadline) {
             size_t bytesRead = 0;
             if (radio.receive(captures[collected], 64, &bytesRead) == CC1101::STATUS_OK) {
-                collected++;
-                Serial.printf("  capture %d/%d\n", collected, CAPTURES_PER_RATE);
+                int dataBytes = countDataBytes(captures[collected], 64);
+                if (dataBytes > 4) {  // ignore captures that are mostly empty
+                    collected++;
+                    Serial.printf("  capture %d/%d (%d data bytes)\n", collected, CAPTURES_PER_RATE, dataBytes);
+                }
             }
+            // random delay to desync from transmission rhythm
+            delay(random(10, 80));
         }
 
         if (collected < 2) {
@@ -162,9 +167,9 @@ RadioSignal RadioManager::capture() {
     
     Serial.println("press and hold the transmitter while is the led on");
     delay(500);
-    digitalWrite(LED_PIN, HIGH);
+    //digitalWrite(LED_PIN, HIGH);
 
-    double baudRate = baudRateFinder(); 
+    float baudRate = baudRateFinder(); 
     if (baudRate == -1) {
         digitalWrite(LED_PIN, LOW);
         return capturedSignal; // Return empty signal on fail
@@ -178,20 +183,17 @@ RadioSignal RadioManager::capture() {
     size_t bytesRead = 0;
     bool zachyt = false;
 
-    while (millis() - start < DELKA_SNIMANI_RADIO){ 
-        radio.receive(zasobnik, sizeof(zasobnik), &bytesRead);
-        for (int i = 0; i < bytesRead; i++) {
-            if (zasobnik[i] != 0x00 && zasobnik[i] != 0xFF){
-                zachyt = true;
-            }
-            if (zachyt) {
-                data.push_back(zasobnik[i]);
-            }
+    while (millis() - start < DELKA_SNIMANI_RADIO) {
+        uint8_t byte = 0;
+        size_t bytesRead = 0;
+        radio.receive(&byte, 1, &bytesRead);
+        if (bytesRead > 0) {
+            data.push_back(byte);
         }
     }
 
     Serial.println("capturing done");
-    digitalWrite(LED_PIN, LOW);
+    //digitalWrite(LED_PIN, LOW);
     
     if (data.size() > 0) {
         std::vector<uint8_t> sequence = extractCycle(data);
@@ -224,10 +226,20 @@ void RadioManager::transmit(const RadioSignal& signal) {
         arrayToSend[t] = signal.getData()[t];
     }
 
-    setupRadio(baud, length);
+    uint8_t codeA[] = {
+        0x0B, 0x60, 0xB0, 0x41, 0x05, 0x82, 0x08, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x05, 0xB0, 0x58, 0x20, 0x82, 0xC1, 0x04, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x82, 0xD8, 0x2C, 0x10, 0x41, 0x60, 0x82, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x16, 0xC1, 0x60, 0x82, 0x0B, 0x04, 0x10, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x2D, 0x82, 0xC1, 0x04, 0x16, 0x08, 0x20, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x41, 0x6C, 0x16, 0x08, 0x20, 0xB0, 0x41, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    };
+
+    setupRadio(baud, sizeof(codeA));
 
     for (int i = 0; i < 2; i++) {
-        CC1101::Status s = radio.transmit(arrayToSend, length);
+        //CC1101::Status s = radio.transmit(arrayToSend, length);
+        CC1101::Status s = radio.transmit(codeA, sizeof(codeA));
         if (s != CC1101::STATUS_OK) {
             Serial.print("Transmit failed: ");
             Serial.println(s);

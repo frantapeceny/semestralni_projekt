@@ -96,7 +96,7 @@ bool Storage::loadAllFromFlash() {
         
         if (dataLen > 0) {
             String baudKey = "b_" + String(i);
-            int baud = prefs.getInt(baudKey.c_str(), 0);
+            float baud = prefs.getFloat(baudKey.c_str(), 0);
 
             uint8_t* dataBuf = new uint8_t[dataLen];
             prefs.getBytes(dataKey.c_str(), dataBuf, dataLen);

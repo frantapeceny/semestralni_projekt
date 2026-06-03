@@ -12,7 +12,18 @@ void NfcSignal::showInfo() const {
 }
 
 String NfcSignal::typeName() const { return "NFC"; }
-String NfcSignal::shortInfo() const { return "UID: " + String(uid.size()) + " bytes"; }
+//String NfcSignal::shortInfo() const { return "UID: " + String(uid.size()) + " bytes"; }
+String NfcSignal::shortInfo() const {
+    String result = "";
+    for (int i = 0; i < 4 && i < (int)uid.size(); i++) {
+        if (uid[i] < 0x10) result += "0";
+        result += String(uid[i], HEX);
+        if (i < 3) result += ":";
+    }
+    if (uid.size() > 4) result += "...";
+    result.toUpperCase();
+    return "UID: " + result;
+}
 
 void NfcSignal::saveToFlash(int slot) const {
     Preferences prefs;
